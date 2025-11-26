@@ -118,7 +118,6 @@ func (a *AudioBuilder) Run() error {
 		if err != nil {
 			return fmt.Errorf("ffmpeg command failed: %w (output: %s)", err, string(output))
 		}
-		fmt.Printf("Audio encoding completed: %s\n", a.outputPath)
 		return nil
 	}
 
@@ -187,7 +186,6 @@ func (a *AudioBuilder) runWithProgress(cmd *exec.Cmd) error {
 	progress.Progress = 100
 	a.progressCallback(progress)
 
-	fmt.Printf("Audio encoding completed: %s\n", a.outputPath)
 	return nil
 }
 

@@ -361,7 +361,6 @@ func (v *VideoBuilder) Run() error {
 		if err != nil {
 			return fmt.Errorf("ffmpeg failed: %w\nOutput: %s", err, string(output))
 		}
-		fmt.Printf("Video encoding completed: %s\n", v.outputPath)
 		return nil
 	}
 
@@ -383,7 +382,6 @@ func (v *VideoBuilder) Run() error {
 		return fmt.Errorf("ffmpeg failed: %w", err)
 	}
 
-	fmt.Printf("Video encoding completed: %s\n", v.outputPath)
 	return nil
 }
 

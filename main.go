@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"encoder/chunker"
 	"encoder/command/audio"
@@ -18,6 +19,8 @@ import (
 	"syscall"
 	"time"
 )
+
+var progressWriter = bufio.NewWriter(os.Stdout)
 
 func main() {
 	// Step 1: Load configuration (CLI flags > config file > defaults)
@@ -348,9 +351,9 @@ func encodeAudio(cfg *config.Config, chunks []*models.Chunk, tempDir string, orc
 		lastUpdate = time.Now()
 
 		// FFmpeg-style output
-		fmt.Printf("\r  chunk=%d/%d fps=%.1f time=%.1fs speed=%.2fx eta=%.0fs%s",
+		fmt.Fprintf(progressWriter, "\r  chunk=%d/%d fps=%.1f time=%.1fs speed=%.2fx eta=%.0fs%s",
 			completed, total, rate, encodedDuration, speed, eta, stuckWarning)
-		os.Stdout.Sync() // Flush output immediately
+		progressWriter.Flush() // Flush output immediately
 	})
 
 	// Create encoding tasks
@@ -436,9 +439,9 @@ func encodeVideo(cfg *config.Config, chunks []*models.Chunk, tempDir string, orc
 		lastUpdate = time.Now()
 
 		// FFmpeg-style output
-		fmt.Printf("\r  chunk=%d/%d fps=%.1f time=%.1fs speed=%.2fx eta=%.0fs%s",
+		fmt.Fprintf(progressWriter, "\r  chunk=%d/%d fps=%.1f time=%.1fs speed=%.2fx eta=%.0fs%s",
 			completed, total, rate, encodedDuration, speed, eta, stuckWarning)
-		os.Stdout.Sync() // Flush output immediately
+		progressWriter.Flush() // Flush output immediately
 	})
 
 	// Create encoding tasks
