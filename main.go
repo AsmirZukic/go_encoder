@@ -76,8 +76,10 @@ func runPipeline(ctx context.Context, cfg *config.Config) error {
 	fmt.Printf("Mode:   %s\n", cfg.Mode)
 	fmt.Println()
 
-	// Create temporary directory for intermediate files
-	tempDir, err := os.MkdirTemp("", "encoder-*")
+	// Create temporary directory for intermediate files in the output directory
+	outputDir := filepath.Dir(cfg.Output)
+	tempDir := filepath.Join(outputDir, "tmp")
+	err := os.MkdirAll(tempDir, 0755)
 	if err != nil {
 		return fmt.Errorf("failed to create temp directory: %w", err)
 	}
