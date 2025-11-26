@@ -9,8 +9,8 @@ func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
 	// Check defaults
-	if cfg.ChunkDuration != 5 {
-		t.Errorf("Expected chunk duration 5, got %d", cfg.ChunkDuration)
+	if cfg.ChunkDuration != 600 {
+		t.Errorf("Expected chunk duration 600, got %d", cfg.ChunkDuration)
 	}
 	if cfg.Workers != 0 {
 		t.Errorf("Expected workers 0 (auto-detect), got %d", cfg.Workers)

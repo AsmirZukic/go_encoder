@@ -122,7 +122,18 @@ func runPipeline(ctx context.Context, cfg *config.Config) error {
 	fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
 
 	chunkCreator := chunker.NewChunker(cfg.Input)
-	chunkCreator.SetChunkDuration(uint32(cfg.ChunkDuration)).SetUseChapters(false)
+
+	// Determine chunking strategy: chapters first, then time-based
+	hasChapters := probeResult.GetChapterCount() > 0
+	useChapters := hasChapters
+
+	if useChapters {
+		fmt.Printf("  Strategy:   Chapter-based (%d chapters detected)\n", probeResult.GetChapterCount())
+		chunkCreator.SetUseChapters(true)
+	} else {
+		fmt.Printf("  Strategy:   Time-based (%.1f second chunks)\n", float64(cfg.ChunkDuration))
+		chunkCreator.SetChunkDuration(float64(cfg.ChunkDuration)).SetUseChapters(false)
+	}
 
 	chunks, err := chunkCreator.CreateChunks(probeResult)
 	if err != nil {
@@ -133,7 +144,16 @@ func runPipeline(ctx context.Context, cfg *config.Config) error {
 		return fmt.Errorf("chunk validation failed: %w", err)
 	}
 
-	fmt.Printf("  Created %d chunks (%d seconds each)\n", len(chunks), cfg.ChunkDuration)
+	// Calculate average chunk duration
+	avgDuration := 0.0
+	if len(chunks) > 0 {
+		for _, chunk := range chunks {
+			avgDuration += chunk.EndTime - chunk.StartTime
+		}
+		avgDuration /= float64(len(chunks))
+	}
+
+	fmt.Printf("  Created:    %d chunks (avg %.1fs each)\n", len(chunks), avgDuration)
 	fmt.Println()
 
 	// PHASE 3: Set up DAG Orchestrator
@@ -181,18 +201,20 @@ func runPipeline(ctx context.Context, cfg *config.Config) error {
 
 	if len(audioFiles) > 0 {
 		finalAudioPath = filepath.Join(tempDir, "final_audio.opus")
+		fmt.Printf("  Concatenating %d audio chunks...", len(audioFiles))
 		if err := concatenateFiles(audioFiles, finalAudioPath, cfg.StrictMode); err != nil {
 			return fmt.Errorf("audio concatenation failed: %w", err)
 		}
-		fmt.Printf("  ✓ Audio concatenated: %d chunks\n", len(audioFiles))
+		fmt.Printf("\r  ✓ Audio concatenated: %d chunks      \n", len(audioFiles))
 	}
 
 	if len(videoFiles) > 0 {
 		finalVideoPath = filepath.Join(tempDir, "final_video.mp4")
+		fmt.Printf("  Concatenating %d video chunks...", len(videoFiles))
 		if err := concatenateFiles(videoFiles, finalVideoPath, cfg.StrictMode); err != nil {
 			return fmt.Errorf("video concatenation failed: %w", err)
 		}
-		fmt.Printf("  ✓ Video concatenated: %d chunks\n", len(videoFiles))
+		fmt.Printf("\r  ✓ Video concatenated: %d chunks      \n", len(videoFiles))
 	}
 	fmt.Println()
 
@@ -200,35 +222,54 @@ func runPipeline(ctx context.Context, cfg *config.Config) error {
 	if hasAudio && hasVideo {
 		fmt.Println("🎞️  Phase 7: Mixing Audio + Video")
 		fmt.Println("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
+		fmt.Print("  Mixing audio and video streams...")
 
 		if err := mixAudioVideo(finalAudioPath, finalVideoPath, cfg.Output); err != nil {
 			return fmt.Errorf("mixing failed: %w", err)
 		}
-		fmt.Printf("  ✓ Mixed output: %s\n", cfg.Output)
+		fmt.Printf("\r  ✓ Mixed output: %s              \n", cfg.Output)
 		fmt.Println()
 	} else if hasAudio {
 		// Audio only - copy to output
+		fmt.Print("  Finalizing audio output...")
 		if err := copyFile(finalAudioPath, cfg.Output); err != nil {
 			return fmt.Errorf("failed to copy audio to output: %w", err)
 		}
-		fmt.Printf("  ✓ Output: %s\n", cfg.Output)
+		fmt.Printf("\r  ✓ Output: %s              \n", cfg.Output)
 		fmt.Println()
 	} else if hasVideo {
 		// Video only - copy to output
+		fmt.Print("  Finalizing video output...")
 		if err := copyFile(finalVideoPath, cfg.Output); err != nil {
 			return fmt.Errorf("failed to copy video to output: %w", err)
 		}
-		fmt.Printf("  ✓ Output: %s\n", cfg.Output)
+		fmt.Printf("\r  ✓ Output: %s              \n", cfg.Output)
 		fmt.Println()
 	}
 
-	// PHASE 8: Final Report
+	// PHASE 8: Final Report with bitrate info
 	elapsed := time.Since(startTime)
+
+	// Get output file info
+	outputInfo, err := os.Stat(cfg.Output)
+	outputSize := int64(0)
+	if err == nil {
+		outputSize = outputInfo.Size()
+	}
+
+	// Calculate bitrate (bits per second)
+	bitrateBps := float64(outputSize*8) / duration
+	bitrateKbps := bitrateBps / 1000
+
 	fmt.Println("═══════════════════════════════════════════════════════════")
 	fmt.Println("                     ✅ SUCCESS!")
 	fmt.Println("═══════════════════════════════════════════════════════════")
 	fmt.Printf("  Output:      %s\n", cfg.Output)
+	fmt.Printf("  Size:        %.2f MB\n", float64(outputSize)/(1024*1024))
+	fmt.Printf("  Duration:    %.2fs\n", duration)
+	fmt.Printf("  Bitrate:     %.0f kbps\n", bitrateKbps)
 	fmt.Printf("  Total time:  %.2fs\n", elapsed.Seconds())
+	fmt.Printf("  Speed:       %.2fx realtime\n", duration/elapsed.Seconds())
 	fmt.Printf("  Chunks:      %d\n", len(chunks))
 	if len(audioFiles) > 0 {
 		fmt.Printf("  Audio:       %d chunks encoded\n", len(audioFiles))
@@ -271,14 +312,42 @@ func buildResourceConstraints(cfg *config.Config) []orchestrator.ResourceConstra
 func encodeAudio(cfg *config.Config, chunks []*models.Chunk, tempDir string, orch *orchestrator.DAGOrchestrator) ([]string, error) {
 	outputFiles := make([]string, len(chunks))
 	startTime := time.Now()
+	lastUpdate := time.Now()
 
-	// Progress tracking
+	// Calculate total duration to encode
+	totalDuration := 0.0
+	for _, chunk := range chunks {
+		totalDuration += chunk.EndTime - chunk.StartTime
+	}
+
+	// Progress tracking with enhanced display
 	completed := 0
 	orch.SetProgressCallback(func(completedCount, total int, task *orchestrator.Task) {
 		completed = completedCount
 		elapsed := time.Since(startTime).Seconds()
+
+		// Calculate metrics
 		rate := float64(completed) / elapsed
-		fmt.Printf("\r  Progress: %d/%d chunks | %.1f chunks/s", completed, total, rate)
+		encodedDuration := (totalDuration / float64(total)) * float64(completed)
+		speed := encodedDuration / elapsed // encoding speed multiplier
+
+		// Calculate ETA
+		remaining := total - completed
+		eta := 0.0
+		if rate > 0 {
+			eta = float64(remaining) / rate
+		}
+
+		// Detect if stuck (no progress in 5 seconds)
+		stuckWarning := ""
+		if time.Since(lastUpdate) > 5*time.Second && completed < total {
+			stuckWarning = " ⚠️  SLOW"
+		}
+		lastUpdate = time.Now()
+
+		// FFmpeg-style output
+		fmt.Printf("\r  chunk=%d/%d fps=%.1f time=%.1fs speed=%.2fx eta=%.0fs%s",
+			completed, total, rate, encodedDuration, speed, eta, stuckWarning)
 	})
 
 	// Create encoding tasks
@@ -330,14 +399,42 @@ func encodeAudio(cfg *config.Config, chunks []*models.Chunk, tempDir string, orc
 func encodeVideo(cfg *config.Config, chunks []*models.Chunk, tempDir string, orch *orchestrator.DAGOrchestrator) ([]string, error) {
 	outputFiles := make([]string, len(chunks))
 	startTime := time.Now()
+	lastUpdate := time.Now()
 
-	// Progress tracking
+	// Calculate total duration to encode
+	totalDuration := 0.0
+	for _, chunk := range chunks {
+		totalDuration += chunk.EndTime - chunk.StartTime
+	}
+
+	// Progress tracking with enhanced display
 	completed := 0
 	orch.SetProgressCallback(func(completedCount, total int, task *orchestrator.Task) {
 		completed = completedCount
 		elapsed := time.Since(startTime).Seconds()
+
+		// Calculate metrics
 		rate := float64(completed) / elapsed
-		fmt.Printf("\r  Progress: %d/%d chunks | %.1f chunks/s", completed, total, rate)
+		encodedDuration := (totalDuration / float64(total)) * float64(completed)
+		speed := encodedDuration / elapsed // encoding speed multiplier
+
+		// Calculate ETA
+		remaining := total - completed
+		eta := 0.0
+		if rate > 0 {
+			eta = float64(remaining) / rate
+		}
+
+		// Detect if stuck (no progress in 5 seconds)
+		stuckWarning := ""
+		if time.Since(lastUpdate) > 5*time.Second && completed < total {
+			stuckWarning = " ⚠️  SLOW"
+		}
+		lastUpdate = time.Now()
+
+		// FFmpeg-style output
+		fmt.Printf("\r  chunk=%d/%d fps=%.1f time=%.1fs speed=%.2fx eta=%.0fs%s",
+			completed, total, rate, encodedDuration, speed, eta, stuckWarning)
 	})
 
 	// Create encoding tasks

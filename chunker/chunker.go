@@ -19,7 +19,7 @@ const (
 // Chunker handles splitting media files into chunks for parallel processing
 type Chunker struct {
 	sourcePath    string
-	chunkDuration uint32
+	chunkDuration float64
 	useChapters   bool
 }
 
@@ -32,8 +32,8 @@ func NewChunker(sourcePath string) *Chunker {
 	}
 }
 
-// SetChunkDuration sets the duration for fixed-size chunks
-func (c *Chunker) SetChunkDuration(duration uint32) *Chunker {
+// SetChunkDuration sets the duration for fixed-size chunks (in seconds, supports fractional values)
+func (c *Chunker) SetChunkDuration(duration float64) *Chunker {
 	c.chunkDuration = duration
 	return c
 }
@@ -140,12 +140,9 @@ func (c *Chunker) createFixedDurationChunks(duration float64) ([]*models.Chunk, 
 		return nil, fmt.Errorf("invalid duration: %.2f seconds", duration)
 	}
 
-	// Use float64 throughout to preserve fractional seconds
-	chunkDurationFloat := float64(c.chunkDuration)
-
 	// Calculate number of chunks (ceiling division)
-	chunkCount := int(duration / chunkDurationFloat)
-	if duration > float64(chunkCount)*chunkDurationFloat {
+	chunkCount := int(duration / c.chunkDuration)
+	if duration > float64(chunkCount)*c.chunkDuration {
 		chunkCount++
 	}
 
@@ -156,8 +153,8 @@ func (c *Chunker) createFixedDurationChunks(duration float64) ([]*models.Chunk, 
 	chunks := make([]*models.Chunk, 0, chunkCount)
 
 	for i := 0; i < chunkCount; i++ {
-		startTime := float64(i) * chunkDurationFloat
-		endTime := startTime + chunkDurationFloat
+		startTime := float64(i) * c.chunkDuration
+		endTime := startTime + c.chunkDuration
 
 		// Last chunk should end at the actual duration (preserving fractional seconds)
 		if endTime > duration {

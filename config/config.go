@@ -59,7 +59,7 @@ func DefaultConfig() *Config {
 		Output: "",
 
 		// Execution settings
-		ChunkDuration: 5,       // 5 second chunks
+		ChunkDuration: 600,     // 10 minute chunks (fallback if no chapters)
 		Workers:       0,       // Auto-detect CPU count
 		Mode:          "mixed", // Use both CPU and GPU optimally
 

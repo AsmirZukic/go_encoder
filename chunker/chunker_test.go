@@ -47,7 +47,7 @@ func TestNewChunker(t *testing.T) {
 	}
 
 	if chunker.chunkDuration != DefaultChunkDuration {
-		t.Errorf("Expected chunkDuration %d, got %d", DefaultChunkDuration, chunker.chunkDuration)
+		t.Errorf("Expected chunkDuration %.1f, got %.1f", float64(DefaultChunkDuration), chunker.chunkDuration)
 	}
 
 	if !chunker.useChapters {
@@ -58,12 +58,12 @@ func TestNewChunker(t *testing.T) {
 // TestChunker_SetChunkDuration tests the SetChunkDuration method
 func TestChunker_SetChunkDuration(t *testing.T) {
 	chunker := NewChunker("/path/to/file.mp4")
-	duration := uint32(300)
+	duration := float64(300)
 
 	result := chunker.SetChunkDuration(duration)
 
 	if chunker.chunkDuration != duration {
-		t.Errorf("Expected chunkDuration %d, got %d", duration, chunker.chunkDuration)
+		t.Errorf("Expected chunkDuration %.1f, got %.1f", duration, chunker.chunkDuration)
 	}
 
 	// Test fluent API
@@ -109,7 +109,7 @@ func TestChunker_CreateChunks_EmptySourcePath(t *testing.T) {
 func TestChunker_CreateChunks_InvalidChunkDuration(t *testing.T) {
 	tests := []struct {
 		name          string
-		duration      uint32
+		duration      float64
 		expectedError string
 	}{
 		{
@@ -246,7 +246,7 @@ func TestChunker_CreateFixedDurationChunks(t *testing.T) {
 	tests := []struct {
 		name           string
 		duration       float64
-		chunkDuration  uint32
+		chunkDuration  float64
 		expectedChunks int
 	}{
 		{

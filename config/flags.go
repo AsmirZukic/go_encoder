@@ -26,7 +26,7 @@ func (c *Config) MergeFromFlags() error {
 
 	// Execution settings
 	workers := fs.Int("workers", -1, "Number of parallel workers (0 = auto-detect, default: from config)")
-	chunkDuration := fs.Int("chunk-duration", -1, "Duration of each chunk in seconds (default: from config)")
+	chunkDuration := fs.Int("chunk-duration", -1, "Chunk duration in seconds (default: chapters or 600s)")
 	mode := fs.String("mode", "", "Encoding mode: cpu-only, gpu-only, mixed (default: from config)")
 
 	// Audio settings
@@ -174,7 +174,7 @@ EXECUTION SETTINGS:
   -workers int
         Number of parallel workers (0 = auto-detect CPU count) (default: 0)
   -chunk-duration int
-        Duration of each chunk in seconds (default: 5)
+        Duration of each chunk in seconds (default: uses chapters if available, otherwise 600s/10min)
 
 AUDIO SETTINGS:
   -audio-codec string
