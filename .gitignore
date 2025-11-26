@@ -1,0 +1,59 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+encoder
+encoder_bin
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+*.out
+coverage.out
+coverage.html
+
+# Go workspace file
+go.work
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Output media files
+*.mp4
+*.mkv
+*.avi
+*.mov
+*.m4a
+*.m4v
+*.opus
+*.aac
+*.mp3
+*.wav
+*.flac
+*.webm
+
+# Temporary and log files
+*.log
+*.tmp
+tmp/
+temp/
+
+# Test fixtures (except sample files explicitly committed)
+testdata/output/
+testdata/tmp/
+
+# Build artifacts
+dist/
+build/
+bin/
+
+# Dependency directories
+vendor/

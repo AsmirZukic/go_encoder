@@ -1,0 +1,71 @@
+# Encoder Configuration File
+# 
+# This file contains default settings for the video encoder.
+# Place this file at:
+#   - ./encoder.yaml (current directory)
+#   - ~/.encoder/config.yaml (user home)
+#   - /etc/encoder/config.yaml (system-wide)
+#
+# Settings can be overridden by:
+#   1. Environment variables (ENCODER_*)
+#   2. Command-line flags
+#
+# Priority: CLI flags > Environment variables > This file > Built-in defaults
+
+# Input/Output (required, must be provided via CLI)
+input: ""
+output: ""
+
+# Execution Settings
+chunk_duration: 5       # Seconds per chunk
+workers: 0              # 0 = auto-detect CPU count
+mode: "mixed"           # Options: cpu-only, gpu-only, mixed
+
+# Audio Settings
+audio:
+  codec: "libopus"      # Codec: libopus, aac, libmp3lame
+  bitrate: "128k"       # Bitrate: 128k, 192k, 320k
+  sample_rate: 48000    # Hz: 48000, 44100
+  channels: 2           # 1 (mono), 2 (stereo), 6 (5.1)
+
+# Video Settings
+video:
+  codec: "libx264"      # Codec: libx264, libx265, h264_nvenc
+  crf: 23               # CRF: 0-51 (lower = better quality, 18-28 typical)
+  preset: "medium"      # Preset: ultrafast, fast, medium, slow, veryslow
+  bitrate: ""           # Optional: use bitrate instead of CRF (e.g., "5M")
+  resolution: ""        # Optional: target resolution (e.g., "1920x1080", empty = keep original)
+  frame_rate: 0         # Optional: target frame rate (e.g., 30, 60, 0 = keep original)
+
+# Mixing Settings (when combining audio + video)
+mixing:
+  copy_video: true      # Copy video stream without re-encoding (faster)
+  copy_audio: true      # Copy audio stream without re-encoding (faster)
+
+# Behavioral Flags
+strict_mode: true       # Fail on any chunk error
+cleanup_chunks: true    # Delete temporary chunk files after concatenation
+verbose: false          # Show detailed logging
+dry_run: false          # Show config without encoding
+
+# Example Presets (comment/uncomment as needed)
+
+# High Quality (slow, large files)
+# video:
+#   crf: 18
+#   preset: "slow"
+# audio:
+#   bitrate: "320k"
+
+# Fast Encoding (lower quality, smaller files)
+# video:
+#   crf: 28
+#   preset: "ultrafast"
+# audio:
+#   bitrate: "96k"
+
+# GPU Encoding (NVIDIA)
+# mode: "gpu-only"
+# video:
+#   codec: "h264_nvenc"
+#   preset: "fast"
