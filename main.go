@@ -348,6 +348,7 @@ func encodeAudio(cfg *config.Config, chunks []*models.Chunk, tempDir string, orc
 		// FFmpeg-style output
 		fmt.Printf("\r  chunk=%d/%d fps=%.1f time=%.1fs speed=%.2fx eta=%.0fs%s",
 			completed, total, rate, encodedDuration, speed, eta, stuckWarning)
+		os.Stdout.Sync() // Flush output immediately
 	})
 
 	// Create encoding tasks
@@ -435,6 +436,7 @@ func encodeVideo(cfg *config.Config, chunks []*models.Chunk, tempDir string, orc
 		// FFmpeg-style output
 		fmt.Printf("\r  chunk=%d/%d fps=%.1f time=%.1fs speed=%.2fx eta=%.0fs%s",
 			completed, total, rate, encodedDuration, speed, eta, stuckWarning)
+		os.Stdout.Sync() // Flush output immediately
 	})
 
 	// Create encoding tasks
