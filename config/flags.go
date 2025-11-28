@@ -46,8 +46,6 @@ func (c *Config) MergeFromFlags() error {
 	// Behavioral flags
 	strict := fs.Bool("strict", false, "Enable strict mode (fail on any error)")
 	noStrict := fs.Bool("no-strict", false, "Disable strict mode (continue on errors)")
-	cleanup := fs.Bool("cleanup", false, "Clean up temporary chunk files after encoding")
-	noCleanup := fs.Bool("no-cleanup", false, "Keep temporary chunk files after encoding")
 	verbose := fs.Bool("verbose", false, "Enable verbose logging")
 	dryRun := fs.Bool("dry-run", false, "Show configuration without encoding")
 
@@ -126,12 +124,6 @@ func (c *Config) MergeFromFlags() error {
 	}
 	if *noStrict {
 		c.StrictMode = false
-	}
-	if *cleanup {
-		c.CleanupChunks = true
-	}
-	if *noCleanup {
-		c.CleanupChunks = false
 	}
 	if *verbose {
 		c.Verbose = true
@@ -274,7 +266,6 @@ func (c *Config) PrintConfig() {
 
 	fmt.Println("\nBehavioral Flags:")
 	fmt.Printf("  Strict Mode:   %v\n", c.StrictMode)
-	fmt.Printf("  Cleanup:       %v\n", c.CleanupChunks)
 	fmt.Printf("  Verbose:       %v\n", c.Verbose)
 	fmt.Println("═══════════════════════════════════════════════════════════")
 }

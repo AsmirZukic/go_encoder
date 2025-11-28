@@ -16,11 +16,15 @@ import (
 //
 // Note: StartTime and EndTime use float64 to preserve fractional seconds,
 // which is critical for precise timing, chapter markers, and audio sync.
+//
+// SegmentPath is used when the input file has been pre-split into segments.
+// When set, encoders use this file directly without seeking, avoiding overhead.
 type Chunk struct {
-	ChunkID    uint    `json:"chunk_id"`
-	StartTime  float64 `json:"start_time"`
-	EndTime    float64 `json:"end_time"`
-	SourcePath string  `json:"source_path"`
+	ChunkID     uint    `json:"chunk_id"`
+	StartTime   float64 `json:"start_time"`
+	EndTime     float64 `json:"end_time"`
+	SourcePath  string  `json:"source_path"`
+	SegmentPath string  `json:"segment_path,omitempty"` // Optional: pre-split segment file
 }
 
 // NewChunk creates a new Chunk with validation.

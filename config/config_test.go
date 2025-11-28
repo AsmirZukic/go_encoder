@@ -27,9 +27,6 @@ func TestDefaultConfig(t *testing.T) {
 	if !cfg.StrictMode {
 		t.Error("Expected strict mode to be true")
 	}
-	if !cfg.CleanupChunks {
-		t.Error("Expected cleanup chunks to be true")
-	}
 }
 
 func TestValidate(t *testing.T) {

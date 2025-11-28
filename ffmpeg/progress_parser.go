@@ -26,19 +26,23 @@ type ProgressParser struct {
 // NewProgressParser creates a new parser for ffmpeg progress output
 func NewProgressParser() *ProgressParser {
 	return &ProgressParser{
-		frameRegex:   regexp.MustCompile(`frame=\s*(\d+)`),
-		fpsRegex:     regexp.MustCompile(`fps=\s*([0-9.]+)`),
-		sizeRegex:    regexp.MustCompile(`size=\s*([0-9]+)kB`),
-		timeRegex:    regexp.MustCompile(`time=\s*([0-9:\.]+)`),
-		bitrateRegex: regexp.MustCompile(`bitrate=\s*([0-9.]+)kbits/s`),
-		speedRegex:   regexp.MustCompile(`speed=\s*([0-9.]+)x`),
+		// Match both "frame=123" and "frame= 123" formats
+		frameRegex:   regexp.MustCompile(`^frame=\s*(\d+)`),
+		fpsRegex:     regexp.MustCompile(`^fps=\s*([0-9.]+)`),
+		sizeRegex:    regexp.MustCompile(`^(?:out_time_)?size=\s*([0-9]+)`),
+		timeRegex:    regexp.MustCompile(`^(?:out_time_)?time=\s*([0-9:\.]+)`),
+		bitrateRegex: regexp.MustCompile(`^bitrate=\s*([0-9.]+)`),
+		// Match speed in both formats: "^speed=X.Xx" (multi-line) and "speed=X.Xx" (embedded in stats line)
+		speedRegex: regexp.MustCompile(`(?:^|\s)speed=\s*([0-9.]+)x?`),
 	}
 }
 
 // ParseLine parses a single line of ffmpeg stderr output and updates the progress
+// Handles both -stats format (all data on one line) and -progress format (key=value per line)
 func (pp *ProgressParser) ParseLine(line string, progress *models.EncodingProgress) bool {
-	// ffmpeg outputs progress on lines starting with "frame=" or containing progress info
-	if !strings.Contains(line, "frame=") && !strings.Contains(line, "time=") {
+	// Skip empty lines and progress markers
+	line = strings.TrimSpace(line)
+	if line == "" || line == "progress=continue" || line == "progress=end" {
 		return false
 	}
 

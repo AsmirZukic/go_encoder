@@ -21,10 +21,10 @@ type Config struct {
 	Mixing MixingConfig `yaml:"mixing"`
 
 	// Behavioral flags
-	StrictMode    bool `yaml:"strict_mode"`    // Fail on any chunk error
-	CleanupChunks bool `yaml:"cleanup_chunks"` // Delete temp files after concat
-	Verbose       bool `yaml:"verbose"`        // Show detailed logs
-	DryRun        bool `yaml:"dry_run"`        // Show config without encoding
+	StrictMode bool `yaml:"strict_mode"` // Fail on any chunk error
+	PreSplit   bool `yaml:"pre_split"`   // Pre-split input file to avoid seeking overhead
+	Verbose    bool `yaml:"verbose"`     // Show detailed logs
+	DryRun     bool `yaml:"dry_run"`     // Show config without encoding
 }
 
 // AudioConfig holds audio encoding settings
@@ -59,9 +59,9 @@ func DefaultConfig() *Config {
 		Output: "",
 
 		// Execution settings
-		ChunkDuration: 600,     // 10 minute chunks (fallback if no chapters)
-		Workers:       0,       // Auto-detect CPU count
-		Mode:          "mixed", // Use both CPU and GPU optimally
+		ChunkDuration: 600,        // 10 minute chunks (fallback if no chapters)
+		Workers:       0,          // Auto-detect CPU count
+		Mode:          "cpu-only", // CPU-only for parallel software encoding
 
 		// Audio defaults (Opus: high quality, small size)
 		Audio: AudioConfig{
@@ -71,14 +71,14 @@ func DefaultConfig() *Config {
 			Channels:   2, // Stereo
 		},
 
-		// Video defaults (H.264: widely compatible)
+		// Video defaults (AV1: best compression, future-proof)
 		Video: VideoConfig{
-			Codec:      "libx264",
-			CRF:        23,       // Good balance of quality/size
-			Preset:     "medium", // Good balance of speed/compression
-			Bitrate:    "",       // Use CRF instead
-			Resolution: "",       // Keep original
-			FrameRate:  0,        // Keep original
+			Codec:      "libsvtav1",
+			CRF:        28,  // Quality (0-63 for AV1, lower = better)
+			Preset:     "8", // Speed preset for SVT-AV1 (0-13, 8=faster/less RAM)
+			Bitrate:    "",  // Use CRF instead
+			Resolution: "",  // Keep original
+			FrameRate:  0,   // Keep original
 		},
 
 		// Mixing defaults (fast copy, no re-encode)
@@ -88,10 +88,10 @@ func DefaultConfig() *Config {
 		},
 
 		// Behavioral defaults
-		StrictMode:    true,  // Fail on any error
-		CleanupChunks: true,  // Clean up temp files
-		Verbose:       false, // Quiet mode
-		DryRun:        false, // Actually encode
+		StrictMode: true,  // Fail on any error
+		PreSplit:   true,  // Pre-split for better performance
+		Verbose:    false, // Quiet mode
+		DryRun:     false, // Actually encode
 	}
 }
 

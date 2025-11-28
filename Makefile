@@ -15,7 +15,7 @@ GOMOD=$(GOCMD) mod
 # Build flags
 LDFLAGS=-ldflags "-s -w"
 
-.PHONY: all build clean test coverage cover cover-html run help tidy deps fmt vet check bench stats install
+.PHONY: all build clean test coverage cover cover-html run help tidy deps fmt vet check bench stats install clean-cache clean-all dirs-info
 
 # Default target
 all: clean build
@@ -146,8 +146,50 @@ help:
 	@echo "  make deps       - Download dependencies"
 	@echo "  make tidy       - Tidy go.mod and go.sum"
 	@echo ""
+	@echo "Cache & Cleanup:"
+	@echo "  make dirs-info  - Show encoding directories structure"
+	@echo "  make clean-cache - Instructions for removing cache manifests"
+	@echo "  make clean-all   - Instructions for removing all temp directories"
+	@echo ""
 	@echo "Utilities:"
 	@echo "  make clean      - Remove build artifacts and generated files"
 	@echo "  make stats      - Show project statistics"
 	@echo "  make all        - Clean and build (default)"
 	@echo "  make help       - Show this help message"
+
+# Show encoding directories and cache information
+dirs-info:
+	@echo "Temporary Directory Structure:"
+	@echo "=============================="
+	@echo ""
+	@echo "When you run: ./encoder -input video.mkv -output ./final.mkv"
+	@echo ""
+	@echo "Creates:"
+	@echo "  ./tmp/                    - Temporary directory (next to output file)"
+	@echo "  ├── segments/             - Pre-split segment files"
+	@echo "  ├── audio/                - Encoded audio chunks"
+	@echo "  └── video/                - Encoded video chunks"
+	@echo "  ./final.mkv               - Output file"
+	@echo ""
+	@echo "When you run: ./encoder -input video.mkv -output /home/user/videos/final.mkv"
+	@echo ""
+	@echo "Creates:"
+	@echo "  /home/user/videos/tmp/    - Temporary directory (next to output file)"
+	@echo "  ├── segments/             - Pre-split segment files"
+	@echo "  ├── audio/                - Encoded audio chunks"
+	@echo "  └── video/                - Encoded video chunks"
+	@echo "  /home/user/videos/final.mkv - Output file"
+
+# Remove only cache manifests (keeps encoded files for reuse)
+clean-cache:
+	@echo "Removing cache manifests from tmp/ directories..."
+	@find . -name "./tmp/.split_manifest.json" -delete 2>/dev/null
+	@find . -name "./tmp/.audio_manifest.json" -delete 2>/dev/null
+	@find . -name "./tmp/.video_manifest.json" -delete 2>/dev/null
+	@echo "Cache manifests removed"
+
+# Remove all temporary encoding directories and caches
+clean-all: clean-cache
+	@echo "Removing all tmp/ directories..."
+	@find . -type d -name "tmp" -exec rm -rf {} + 2>/dev/null || true
+	@echo "All tmp/ directories removed"

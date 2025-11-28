@@ -1,7 +1,9 @@
 package video
 
 import (
+	"bytes"
 	"encoder/command"
+	"encoder/ffmpeg"
 	"encoder/models"
 	"fmt"
 	"io"
@@ -61,11 +63,11 @@ func NewVideoBuilder(chunk *models.Chunk, outputPath string) *VideoBuilder {
 		chunk:       chunk,
 		outputPath:  outputPath,
 		codec:       "libx264",
-		bitrate:     "2000k",
-		frameRate:   30,
+		bitrate:     "", // No default bitrate - use CRF
+		frameRate:   0,  // 0 = keep original frame rate
 		crf:         23,
 		preset:      "medium",
-		pixelFormat: "yuv420p",
+		pixelFormat: "", // No default - let ffmpeg decide based on codec
 		priority:    5,
 		cpuFilters:  []string{},
 		gpuFilters:  []string{},
@@ -215,11 +217,31 @@ func (v *VideoBuilder) BuildArgs() []string {
 		args = append(args, "-hwaccel_output_format", string(v.hwAccel))
 	}
 
-	// Input file and time range
+	// Use pre-split segment if available (no seeking overhead)
+	// Otherwise fall back to source path with seeking
+	inputPath := v.chunk.SourcePath
+	useSegment := false
+	if v.chunk.SegmentPath != "" {
+		inputPath = v.chunk.SegmentPath
+		useSegment = true
+	}
+
+	// Input file
+	args = append(args, "-i", inputPath)
+
+	// Only add seeking if not using pre-split segment
+	if !useSegment {
+		args = append(args,
+			"-ss", formatTime(v.chunk.StartTime),
+			"-to", formatTime(v.chunk.EndTime),
+		)
+	}
+
 	args = append(args,
-		"-i", v.chunk.SourcePath,
-		"-ss", formatTime(v.chunk.StartTime),
-		"-to", formatTime(v.chunk.EndTime),
+		"-map", "0:v:0", // Select first video stream only
+		"-an",    // No audio
+		"-sn",    // No subtitles (reduces RAM usage)
+		"-stats", // Enable encoding stats output to stderr
 	)
 
 	// Build filter chain
@@ -259,8 +281,8 @@ func (v *VideoBuilder) BuildArgs() []string {
 		args = append(args, "-pix_fmt", v.pixelFormat)
 	}
 
-	// Copy audio stream (no re-encoding)
-	args = append(args, "-c:a", "copy")
+	// Note: We're using -an (no audio) above, so we don't add -c:a copy here
+	// Adding both -an and -c:a copy causes undefined behavior in ffmpeg
 
 	// Add extra custom arguments
 	args = append(args, v.extraArgs...)
@@ -353,6 +375,11 @@ func (v *VideoBuilder) buildFilterChain() string {
 // Run executes the video encoding command
 func (v *VideoBuilder) Run() error {
 	args := v.BuildArgs()
+
+	// Print the actual ffmpeg command being executed
+	cmdStr := "ffmpeg " + strings.Join(args, " ")
+	fmt.Printf("\n🎬 VIDEO CHUNK %d:\n%s\n\n", v.chunk.ChunkID, cmdStr)
+
 	cmd := exec.Command("ffmpeg", args...)
 
 	// If no progress callback, use simple execution
@@ -364,23 +391,89 @@ func (v *VideoBuilder) Run() error {
 		return nil
 	}
 
-	// Execute with progress tracking (simplified for now)
-	// Full progress parsing like audio can be added later
+	// Execute with progress tracking
+	return v.runWithProgress(cmd)
+}
+
+// runWithProgress executes ffmpeg and streams progress updates via callback
+func (v *VideoBuilder) runWithProgress(cmd *exec.Cmd) error {
+	// Get stderr pipe for progress parsing
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		return fmt.Errorf("failed to get stderr pipe: %w", err)
 	}
 
+	// Get stdout for capturing any output
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+
+	// Start the command
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("failed to start ffmpeg: %w", err)
 	}
 
-	// Consume stderr (TODO: add progress parsing)
-	io.Copy(io.Discard, stderr)
+	// Calculate chunk duration for progress percentage
+	chunkDuration := float64(v.chunk.EndTime - v.chunk.StartTime)
 
-	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("ffmpeg failed: %w", err)
+	// Create progress tracker
+	progress := models.NewEncodingProgress(chunkDuration)
+	progress.State = models.ProgressStateStarting
+	v.progressCallback(progress)
+
+	// Capture stderr in a buffer for error logging while also parsing progress
+	var stderrBuf bytes.Buffer
+	stderrTee := io.TeeReader(stderr, &stderrBuf)
+
+	// Parse progress in a goroutine
+	parser := ffmpeg.NewProgressParser()
+	errChan := make(chan error, 1)
+
+	go func() {
+		errChan <- parser.StreamProgress(stderrTee, progress, v.progressCallback)
+	}()
+
+	// Capture stdout (usually empty for ffmpeg, but might have warnings)
+	stdoutData, _ := io.ReadAll(stdout)
+
+	// Wait for command to complete
+	cmdErr := cmd.Wait()
+
+	// Wait for progress parsing to complete
+	parseErr := <-errChan
+
+	// Update final state
+	if cmdErr != nil {
+		progress.State = models.ProgressStateFailed
+		v.progressCallback(progress)
+
+		// Log detailed error information
+		fmt.Printf("VIDEO: ========================================\n")
+		fmt.Printf("VIDEO: FFmpeg failed for chunk %d\n", v.chunk.ChunkID)
+		fmt.Printf("VIDEO: Exit error: %v\n", cmdErr)
+		fmt.Printf("VIDEO: ========================================\n")
+		fmt.Printf("VIDEO: STDERR output:\n%s\n", stderrBuf.String())
+		fmt.Printf("VIDEO: ========================================\n")
+		if len(stdoutData) > 0 {
+			fmt.Printf("VIDEO: STDOUT output:\n%s\n", string(stdoutData))
+			fmt.Printf("VIDEO: ========================================\n")
+		}
+
+		return fmt.Errorf("ffmpeg command failed: %w", cmdErr)
 	}
+
+	if parseErr != nil {
+		// Progress parsing failed, but command succeeded
+		// Ignore "file already closed" errors - this is normal when ffmpeg finishes quickly
+		if !strings.Contains(parseErr.Error(), "file already closed") {
+			fmt.Printf("Warning: progress parsing error: %v\n", parseErr)
+		}
+	}
+
+	progress.State = models.ProgressStateCompleted
+	progress.Progress = 100
+	v.progressCallback(progress)
 
 	return nil
 }

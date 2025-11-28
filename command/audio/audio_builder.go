@@ -74,28 +74,59 @@ func (a *AudioBuilder) BuildArgs() []string {
 		return []string{}
 	}
 
-	args := []string{
-		"-i", a.chunk.SourcePath,
-		"-ss", timeutil.FormatSeconds(a.chunk.StartTime),
-		"-to", timeutil.FormatSeconds(a.chunk.EndTime),
-		"-vn", // No video
-		"-c:a", a.codec,
-		"-b:a", a.bitrate,
+	// Use pre-split segment if available (no seeking overhead)
+	// Otherwise fall back to source path with seeking
+	inputPath := a.chunk.SourcePath
+	useSegment := false
+	if a.chunk.SegmentPath != "" {
+		inputPath = a.chunk.SegmentPath
+		useSegment = true
 	}
+
+	args := []string{
+		"-progress", "pipe:2", // Output progress to stderr in key=value format
+		"-i", inputPath,
+	}
+
+	// Only add seeking if not using pre-split segment
+	if !useSegment {
+		args = append(args,
+			"-ss", timeutil.FormatSeconds(a.chunk.StartTime),
+			"-to", timeutil.FormatSeconds(a.chunk.EndTime),
+		)
+	}
+
+	args = append(args,
+		"-map", "0:a:0", // Select first audio stream only
+		"-vn",      // No video
+		"-sn",      // No subtitles (reduces RAM usage)
+		"-nostats", // Disable stats (we use -progress instead)
+	)
+
+	// Build audio filter chain: downmix to stereo, normalize, boost midrange
+	filterChain := []string{
+		"pan=stereo|FL<FC+0.30*FL+0.30*BL|FR<FC+0.30*FR+0.30*BR", // Downmix to stereo with center channel
+		"loudnorm=I=-16:TP=-1.5:LRA=11",                          // Normalize audio (EBU R128)
+		"equalizer=f=1000:width_type=h:width=2:g=3",              // Boost midrange at 1kHz, +3dB
+	}
+
+	// Append any additional user filters
+	if len(a.filters) > 0 {
+		filterChain = append(filterChain, a.filters...)
+	}
+
+	// Add filter chain
+	args = append(args, "-af", strings.Join(filterChain, ","))
+
+	// Force stereo output
+	args = append(args, "-ac", "2")
+
+	// Add codec and bitrate
+	args = append(args, "-c:a", a.codec, "-b:a", a.bitrate)
 
 	// Add sample rate if specified
 	if a.sampleRate > 0 {
 		args = append(args, "-ar", fmt.Sprintf("%d", a.sampleRate))
-	}
-
-	// Add channels if specified
-	if a.channels > 0 {
-		args = append(args, "-ac", fmt.Sprintf("%d", a.channels))
-	}
-
-	// Add audio filters if specified
-	if len(a.filters) > 0 {
-		args = append(args, "-af", strings.Join(a.filters, ","))
 	}
 
 	args = append(args, "-y", a.outputPath)
@@ -110,6 +141,11 @@ func (a *AudioBuilder) Run() error {
 	}
 
 	args := a.BuildArgs()
+
+	// Print the actual ffmpeg command being executed
+	cmdStr := "ffmpeg " + strings.Join(args, " ")
+	fmt.Printf("\n🎵 AUDIO CHUNK %d:\n%s\n\n", a.chunk.ChunkID, cmdStr)
+
 	cmd := exec.Command("ffmpeg", args...)
 
 	// If no progress callback, use simple execution
@@ -178,8 +214,10 @@ func (a *AudioBuilder) runWithProgress(cmd *exec.Cmd) error {
 
 	if parseErr != nil {
 		// Progress parsing failed, but command succeeded
-		// This is not critical, just log it
-		fmt.Printf("Warning: progress parsing error: %v\n", parseErr)
+		// Ignore "file already closed" errors - this is normal when ffmpeg finishes quickly
+		if !strings.Contains(parseErr.Error(), "file already closed") {
+			fmt.Printf("Warning: progress parsing error: %v\n", parseErr)
+		}
 	}
 
 	progress.State = models.ProgressStateCompleted

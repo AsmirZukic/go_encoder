@@ -19,7 +19,7 @@ output: ""
 # Execution Settings
 chunk_duration: 5       # Seconds per chunk
 workers: 0              # 0 = auto-detect CPU count
-mode: "mixed"           # Options: cpu-only, gpu-only, mixed
+mode: "cpu-only"        # Options: cpu-only, gpu-only, mixed
 
 # Audio Settings
 audio:
@@ -30,8 +30,8 @@ audio:
 
 # Video Settings
 video:
-  codec: "libx264"      # Codec: libx264, libx265, h264_nvenc
-  crf: 23               # CRF: 0-51 (lower = better quality, 18-28 typical)
+  codec: "libx265"      # Codec: libx264 (H.264), libx265 (H.265/HEVC), libaom-av1 (AV1)
+  crf: 28               # CRF: 0-51 (lower = better quality, 20-28 typical)
   preset: "medium"      # Preset: ultrafast, fast, medium, slow, veryslow
   bitrate: ""           # Optional: use bitrate instead of CRF (e.g., "5M")
   resolution: ""        # Optional: target resolution (e.g., "1920x1080", empty = keep original)
@@ -50,22 +50,28 @@ dry_run: false          # Show config without encoding
 
 # Example Presets (comment/uncomment as needed)
 
-# High Quality (slow, large files)
+# High Quality H.265 (slow, best compression)
+# mode: "cpu-only"
 # video:
-#   crf: 18
+#   codec: "libx265"
+#   crf: 20
 #   preset: "slow"
 # audio:
 #   bitrate: "320k"
 
-# Fast Encoding (lower quality, smaller files)
+# Fast H.265 Encoding (lower quality, faster)
+# mode: "cpu-only"
 # video:
-#   crf: 28
+#   codec: "libx265"
+#   crf: 32
 #   preset: "ultrafast"
 # audio:
 #   bitrate: "96k"
 
-# GPU Encoding (NVIDIA)
-# mode: "gpu-only"
+# H.264 Encoding (even faster, most compatible)
+# mode: "cpu-only"
 # video:
-#   codec: "h264_nvenc"
+#   codec: "libx264"
+#   crf: 23
+#   preset: "medium"
 #   preset: "fast"

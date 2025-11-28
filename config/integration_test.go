@@ -173,9 +173,6 @@ video:
 	if cfg.StrictMode {
 		t.Error("Expected strict mode false, got true")
 	}
-	if cfg.CleanupChunks {
-		t.Error("Expected cleanup chunks false, got true")
-	}
 	if !cfg.Verbose {
 		t.Error("Expected verbose true, got false")
 	}

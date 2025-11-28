@@ -107,33 +107,38 @@ func (o *DAGOrchestrator) Execute() ([]*models.EncoderResult, error) {
 	}
 
 	totalTasks := len(o.tasks)
-	completedTasks := 0
-	results := make([]*models.EncoderResult, 0, totalTasks)
+	resultsCh := make(chan *models.EncoderResult, totalTasks) // Channel for results - no race condition!
+	completionCh := make(chan struct{})                       // Signal when all tasks are done
 
 	// Completion handler goroutine
 	var wg sync.WaitGroup
-	doneCh := make(chan bool)
-
+	wg.Add(1)
 	go func() {
+		defer wg.Done()
+
+		completedCount := 0
 		for {
 			select {
-			case taskID := <-o.completeCh:
-				completedTasks++
+			case result := <-resultsCh:
+				completedCount++
 
+				// Get the task to notify progress
 				o.tasksMutex.RLock()
-				task := o.tasks[taskID]
+				var task *Task
+				for _, t := range o.tasks {
+					if t.Result == result {
+						task = t
+						break
+					}
+				}
 				o.tasksMutex.RUnlock()
 
-				if task.Result != nil {
-					results = append(results, task.Result)
+				if task != nil && o.onProgress != nil {
+					o.onProgress(completedCount, totalTasks, task)
 				}
 
-				if o.onProgress != nil {
-					o.onProgress(completedTasks, totalTasks, task)
-				}
-
-				if completedTasks == totalTasks {
-					doneCh <- true
+				if completedCount == totalTasks {
+					close(completionCh)
 					return
 				}
 			}
@@ -147,15 +152,47 @@ func (o *DAGOrchestrator) Execute() ([]*models.EncoderResult, error) {
 		o.scheduler()
 	}()
 
+	// Start task completion collector goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for taskID := range o.completeCh {
+			o.tasksMutex.RLock()
+			task := o.tasks[taskID]
+			o.tasksMutex.RUnlock()
+
+			if task.Result != nil {
+				resultsCh <- task.Result
+			}
+		}
+	}()
+
 	// Wait for all tasks to complete
-	<-doneCh
+	<-completionCh
+	close(o.completeCh)
 	wg.Wait()
+
+	// Collect all results
+	results := make([]*models.EncoderResult, 0, totalTasks)
+	o.tasksMutex.RLock()
+	for _, task := range o.tasks {
+		if task.Result != nil {
+			results = append(results, task.Result)
+		}
+	}
+	o.tasksMutex.RUnlock()
 
 	return results, nil
 }
 
 // scheduler continuously checks for ready tasks and executes them
+// Uses adaptive sleep to reduce latency while avoiding busy-waiting
 func (o *DAGOrchestrator) scheduler() {
+	// Use a channel to be notified when tasks complete (allows event-driven scheduling)
+	lastActivityTime := time.Now()
+	const maxSleep = 10 * time.Millisecond
+	const minSleep = 1 * time.Millisecond
+
 	for {
 		// Check if all tasks are done or blocked
 		if o.allTasksCompleteOrBlocked() {
@@ -166,23 +203,39 @@ func (o *DAGOrchestrator) scheduler() {
 		readyTasks := o.getReadyTasks()
 
 		// Try to execute ready tasks
+		hasStarted := false
 		for _, task := range readyTasks {
 			// Check if resource is available
 			if o.tryAcquireResource(task.Resource) {
+				// Mark as starting execution
+				o.tasksMutex.Lock()
+				if task.Status == TaskReady {
+					task.Status = TaskRunning
+				}
+				o.tasksMutex.Unlock()
+
 				// Execute task in goroutine
 				go o.executeTask(task)
+				hasStarted = true
+				lastActivityTime = time.Now()
 			}
 		}
 
-		// Sleep briefly to avoid busy waiting
-		time.Sleep(10 * time.Millisecond)
+		// Adaptive sleep: if we started tasks recently, use shorter sleep
+		// Otherwise use longer sleep to reduce CPU usage
+		sleepDuration := maxSleep
+		if hasStarted || time.Since(lastActivityTime) < 100*time.Millisecond {
+			sleepDuration = minSleep
+		}
+
+		time.Sleep(sleepDuration)
 	}
 }
 
 // getReadyTasks returns tasks that are ready to execute
 func (o *DAGOrchestrator) getReadyTasks() []*Task {
-	o.tasksMutex.RLock()
-	defer o.tasksMutex.RUnlock()
+	o.tasksMutex.Lock()
+	defer o.tasksMutex.Unlock()
 
 	ready := make([]*Task, 0)
 
@@ -249,9 +302,8 @@ func (o *DAGOrchestrator) releaseResource(resourceType ResourceType) {
 func (o *DAGOrchestrator) executeTask(task *Task) {
 	defer o.releaseResource(task.Resource)
 
-	// Update status to running
+	// Set start time (status already set to TaskRunning in scheduler)
 	o.tasksMutex.Lock()
-	task.Status = TaskRunning
 	task.StartTime = time.Now()
 	o.tasksMutex.Unlock()
 
